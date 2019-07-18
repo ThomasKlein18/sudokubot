@@ -1,6 +1,11 @@
 import numpy as np 
 import math 
+"""
+My implementation of DLX, with some additional features I find helpful for debugging, such as 
+the ability of a DataObject to print itself.
 
+See https://arxiv.org/pdf/cs/0011047.pdf for a detailed explanation.
+"""
 
 class DataObject():
     
@@ -36,9 +41,22 @@ class ExactCover():
 
 
     def search(self, k=0):
+        """
+        Solves the exact cover problem as described in the paper.
+        
+        returns: True once it found a solution, False if instance is unsolvable.
+
+        The solution is then contained in self.solution_objects, which is a list of DataObjects.
+        To acquire the corresponding rows, use get_solution() after running search().
+
+        I adapted the algorithm to find and return only one solution instead of printing out all possible solutions.
+        You can revert that change:
+        Instead of returning true and passing that truth value upwards through the recursion levels, just 
+        uncomment the print_solution statement and remove the if-clause to keep the algorithm running. 
+        """
         if self.root.r == self.root:
-            self.print_solution() #self.parse_solution()
-            return True#set([obj.row for obj in self.solution_objects])
+            #self.print_solution()
+            return True 
         else:
             col = self.choose_column()
             self.cover_column(col)
@@ -62,9 +80,14 @@ class ExactCover():
                     j = j.l 
                 r = r.d
             self.uncover_column(col)
-            return False #[obj.row for obj in self.solution_objects]
+            return False 
     
     def cover_column(self, col):
+        """
+        Covers one column of the sparse matrix by removing it, 
+        walking over all of the rows that satisfy it and removing those rows as well
+        by removing all of the data-objects they consist of.
+        """
         col.r.l = col.l 
         col.l.r = col.r
         i = col.d 
@@ -78,6 +101,9 @@ class ExactCover():
             i = i.d
 
     def uncover_column(self, col):
+        """
+        Backtracking step: If we ended up with an unsolvable matrix, revert all of the deletion operations.
+        """
         i = col.u
         while(i != col):
             j = i.l 
@@ -90,27 +116,10 @@ class ExactCover():
         col.r.l = col 
         col.l.r = col
 
-    def parse_solution(self):
-        """
-        The idea behind printing a solution is relatively simple if you choose a clever representation
-        of rows. Here: Let a row be represented by the set of columns that it covers. 
-        Therefore, we print the row for every data object that we selected.
-        """
-        list_of_rows = []
-        for dataobject in self.solution_objects:
-            list_of_column_names = []
-            start = dataobject.c.n 
-            print(start)
-            list_of_column_names.append(start)
-            right = dataobject.r
-            while(start != right.c.n):
-                print(right.c.n)
-                list_of_column_names.append(right.c.n)
-                right = right.r
-            list_of_rows.append(list_of_column_names)
-        return list_of_rows
-
     def print_solution_knuth(self):
+        """
+        This is only here for debugging reasons.
+        """
         for obj in self.solution_objects:
             res = ""
             o = obj
@@ -123,12 +132,17 @@ class ExactCover():
         print(True)
 
     def print_solution(self):
+        """
+        Prints a solution to the command line as a list of row numbers. It will give you duplicate entries if some exist.
+        """
         print("Printing solution:")
-        for obj in self.solution_objects:
-            print("Select row {}".format(obj.row))
+        print([obj.row for obj in self.solution_objects])
 
     def get_solution(self):
-        return [obj.row for obj in self.solution_objects]
+        """
+        Returns the found solution (this is not necessarily the only existing solution) as a set of row indices.
+        """
+        return [obj.row for obj in set(self.solution_objects)]
 
     def choose_column(self):
         """
@@ -148,8 +162,16 @@ class ExactCover():
 
 
 def create_cover_instance(matr):
+    """
+    This transforms a sparse matrix into a cover instance expressed as double-linked lists, by walking over
+    the the sparse matrix and creating a data object for every "1" that is encountered, which is then woven into
+    the web of double-linked lists.
+    This might be very helpful, because it works for any kind of sparse matrix, irrespective of the semantics of the
+    problem (so, not just for sudokus). However, there might be more efficient ways of creating the web, if the problem
+    can be transformed into the web directly, without expressing it as a matrix first.
+    """
 
-    cols = [ColumnObject(0,name) for name in range(matr.shape[1]+1)]#["h"] + [chr(i+65) for i in range(matr.shape[1])]]
+    cols = [ColumnObject(0,name) for name in range(matr.shape[1]+1)]
 
     for idx in range(len(cols)-1):
         cols[idx].r = cols[idx+1]
@@ -177,7 +199,6 @@ def create_cover_instance(matr):
 
                 # setting up
                 ones = np.where(matr[0:i,j])[0]
-                #print("Working on {}, ones={}, ones.any={} result: {}".format(d.id, ones, len(ones),d))
                 if len(ones) > 0:
                     up = new_matr[ones[-1]][j]
                     d.u = up
@@ -202,51 +223,6 @@ def create_cover_instance(matr):
                     d.l = left
                     left.r = d 
 
-                
                 new_matr[i][j] = d 
 
-    # for i in range(matr.shape[0]):
-    #     for j in range(matr.shape[1]):
-    #         print(new_matr[i][j])
-
     return cols[0]
-
-
-def setup_exact_cover(sudoku):
-    """
-    Creates the large sparse matrix that contains all the constraints for sudokus.
-    """
-
-    ec = np.zeros((729,324))
-    fulfilled = []
-    for i in range(9): # row
-        for j in range(9): # column
-
-            if sudoku[i, j] == 0:
-                for k in range(9): # number
-
-                    row = i*81+j*9+k
-
-                    # cell constraint
-                    ec[row, i*9+j] = 1 
-
-                    # row constraint
-                    ec[row, 81+i*9+k] = 1
-
-                    # column constraint
-                    ec[row,162+(9*j+k)%81] = 1
-
-                    # block constraint
-                    ec[row, 243+k+9*int((j/3))+27*int((i/3))] = 1
-            else:
-                k = sudoku[i,j]-1 #because the input will use numbers 1 to 9 instead of 0 to 8
-                fulfilled += [i*9+j, 81+i*9+k, 162+(9*j+k)%81, 243+k+9*int((j/3))+27*int((i/3))]
-    
-    ec = np.delete(ec, fulfilled, axis=1) #zeros[]
-    zeros = np.where(np.sum(ec, axis=0) == 0)
-    ec = np.delete(ec, zeros[0], axis=1)
-    return ec 
-
-def setup_sudoku(ec, sudoku):
-    locations = [[i*81+9*j+k] for i,j in zip(np.where(sudoku)[0], np.where(sudoku)[1]) for k in range(9)]
-    return np.delete(ec, locations, axis=0)
