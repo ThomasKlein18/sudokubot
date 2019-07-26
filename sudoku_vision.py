@@ -15,7 +15,7 @@ from scipy.ndimage.morphology import binary_erosion, binary_opening
 from PIL import Image, ExifTags
 from scipy import fftpack
 
-from sudoku_solve import print_sudoku
+from sudoku_solve import print_sudoku, solve_dancinglinks
 
 model = tf.keras.models.load_model("checkpoint.h5")
 
@@ -44,9 +44,6 @@ def parse_photo(filename):
     sobel_hori = sobel(bin_img, 0) # obtain horizontal edges
     sobel_img = sobel_vert + sobel_hori
 
-    plt.imshow(sobel_img)
-    plt.show()
-
     # step 3: find largest connected region = sudoku
     labelled = label_func(sobel_img)
     props = regionprops(labelled)
@@ -62,9 +59,6 @@ def parse_photo(filename):
     minrow, mincol, maxrow, maxcol = sudoku_patch.bbox
     margin = 0
     img = img[minrow-margin:maxrow+margin, mincol-margin:maxcol+margin]
-
-    plt.imshow(img)
-    plt.show()
 
     # step 4: find angle and rotate image by that angle
     h_space, angles, dist = hough_line(sobel_vert)
@@ -98,8 +92,6 @@ def parse_photo(filename):
                 tile[:,k] = 0
         #opened_tile = tile
         opened_tile = binary_opening(tile, np.ones((3,3))).astype(int)
-        plt.imshow(opened_tile)
-        plt.show()
 
         if np.sum(opened_tile) / (opened_tile.shape[0]*opened_tile.shape[1]) > 0.01:
 
@@ -118,8 +110,7 @@ def parse_photo(filename):
             tile = np.pad(tile[minrow:maxrow, mincol:maxcol], [[margin,margin],[2*margin,2*margin]], mode="constant")
             
             tile = cv2.resize(tile.astype(np.uint8), dsize=(28, 28), interpolation=cv2.INTER_CUBIC)
-            plt.imshow(tile)
-            plt.show()
+    
             predictions = model.predict(np.reshape(tile, [1,28,28,1]))[0]
             label = np.argmax(predictions)
 
@@ -127,5 +118,26 @@ def parse_photo(filename):
 
     return sudoku.astype(np.uint8)
 
+
+def sudoku_to_image(sudoku):
+    res = np.zeros((28*9,28*9))
+    for i in range(9):
+        for j in range(9):
+            num = sudoku[i,j]
+            pic = plt.imread(os.path.join("numbers",str(num)+".png"))
+            pic = np.sum(pic, axis=2)
+            res[28*i:28*i+28,28*j:28*j+28] = pic
+
+    for i in range(9):
+        for j in range(9):
+            if j != 0:
+                res[:,j*28] = np.max(res)
+        if i != 0:
+            res[i*28,:] = np.max(res)
+
+    return res
+
 if __name__ == "__main__":
-    print_sudoku(parse_photo("sudoku_imgs/b.jpg"))
+    s = parse_photo("sudoku_imgs/f.jpg")
+    s = solve_dancinglinks(s)
+    sudoku_to_image(s)

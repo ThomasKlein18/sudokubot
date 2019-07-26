@@ -11,7 +11,9 @@ from functools import wraps
 from telegram import ChatAction
 
 from sudoku_solve import solve_dancinglinks, print_sudoku
-from sudoku_vision import parse_photo
+from sudoku_vision import parse_photo, sudoku_to_image
+
+import matplotlib.pyplot as plt 
 
 # Enable logging
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -53,18 +55,20 @@ def echo(bot, update):
     if( len(update.message.photo) > 0):
         # store the picture
         bot.get_file(update.message.photo[-1]).download("sudoku.jpg")
-        # read it in as photo I can work with
-        img = plt.imread("sudoku.jpg")
         # transform picture to np.array
-        sudoku = parse_photo(img)
+        sudoku = parse_photo("sudoku.jpg")
         # solve sudoku
         solved = solve_dancinglinks(sudoku)
-        # print to command line
-        print_sudoku(solved)
-        # 
 
-
-    update.message.reply_text(solved)
+        if solved.all():
+            # transform to image
+            image = sudoku_to_image(solved)
+            # save picture
+            plt.imsave("solved.jpg", image, cmap="gray")
+            update.message.reply_photo(open('solved.jpg', 'rb'))
+            #bot.send_photo(cid, open('rooster.jpg', 'rb'),reply_markup=hideBoard)
+        else:
+            update.message.reply_text("Sudoku nicht erkannt oder nicht lösbar, bitte erneut senden.")
 
 def error(bot, update, error):
     """Log Errors caused by Updates."""
@@ -74,7 +78,6 @@ def main():
     """Start the bot."""
     # Create the EventHandler and pass it your bot's token.
     updater = Updater(open("access_token.txt", 'r').read())
-    
 
     # Get the dispatcher to register handlers
     dp = updater.dispatcher
